@@ -29,6 +29,49 @@ export default ({ droppingItem }) => {
     */
     const [droppingItemHeight, setDroppingItemHeight] = React.useState(1); // Height of the dropping item, used to adjust the placeholder height during drag-and-drop of a new gate
     const [draggedItemId, setDraggedItemId] = React.useState(null); // ID of the item being dragged, used to handle drag-and-drop events of existing gates
+    
+    const [xRayStates, setXRayStates] = React.useState({});
+
+    const toggleXRayMode = (id) => {
+        setLayout(prevLayout => {
+            const gateItem = prevLayout.find(item => item.i === id);
+            const gate = operators.find(op => op.id === gateItem.gateId);
+
+            const isCurrentlyXRay = xRayStates[id];
+            const minX = Math.min(...(gate.components?.map(c => c.x) ?? [0]));
+            const maxX = Math.max(...(gate.components?.map(c => c.x) ?? [0]));
+            const newW = isCurrentlyXRay ? 1 : (maxX - minX + 1);
+            const delta = newW - gateItem.w;
+
+            return prevLayout.map(item => {
+                if (item.i === id) {
+                    return {
+                        ...item,
+                        w: newW,
+                    };
+                } else if (item.x > gateItem.x) {
+                    return {
+                        ...item,
+                        x: item.x + delta,
+                    };
+                }
+                return item;
+            });
+        });
+
+        setXRayStates(prev => ({
+            ...prev,
+            [id]: !prev[id],
+        }));
+    };
+
+    const isXRayMode = (id) => xRayStates[id] === true;
+
+    const maxColUsed = Math.max(
+        gridDimenX,
+        ...layout.map(item => item.x + item.w)
+    );
+
 
     // Set the dropping item height for placeholder based on the height described in the operators array
     useEffect(() => {
@@ -104,8 +147,8 @@ export default ({ droppingItem }) => {
             style={{
                 boxSizing: 'content-box',
                 padding: `${circuitContainerPadding.y}px ${circuitContainerPadding.x}px`,
-                minWidth: `${2 * containerPadding.x + gridDimenX * (size + margin.x)}px`,
-                width: `${2 * containerPadding.x + (gridDimenX) * (size + margin.x) + size / 2 + margin.x}px`,
+                minWidth: `${2 * containerPadding.x + maxColUsed * (size + margin.x)}px`,
+                width: `${2 * containerPadding.x + (maxColUsed) * (size + margin.x) + size / 2 + margin.x}px`,
                 height: `${2 * containerPadding.y + (gridDimenY) * (size + margin.y) - margin.y}px`, // +1 to account for classical bit
                 overflow: 'hidden',
             }}
@@ -115,8 +158,9 @@ export default ({ droppingItem }) => {
                 layout={layout}
                 useCSSTransforms={false}
                 className="relative z-20"
-                cols={gridDimenX}
+                cols={maxColUsed}
                 compactType={null}
+                preventCollision={true}
                 containerPadding={[containerPadding.x, containerPadding.y]}
                 droppingItem={{
                     i: '__dropping-elem__',
@@ -150,7 +194,7 @@ export default ({ droppingItem }) => {
                     handleDragStop(layout);
                 }}
                 onDrop={onDrop}
-                preventCollision={true}
+                // preventCollision={true}
                 rowHeight={size}
                 style={{
                     minHeight: `${2 * containerPadding.y + gridDimenY * (size + margin.y) - margin.y}px`,
@@ -160,7 +204,7 @@ export default ({ droppingItem }) => {
                     marginRight: `${circuitLineMarginR}px`,
                 }}
                 width={
-                    gridDimenX *
+                    maxColUsed *
                     (size + margin.x)
                 }
             >
@@ -170,6 +214,11 @@ export default ({ droppingItem }) => {
                         console.warn(`Gate with ID ${item.gateId} not found in operators.`);
                         return null;
                     }
+
+                    const xray = isXRayMode(item.i);
+                    const computedWidth = gate.isCustom && xray
+                        ? Math.max(...(gate.components?.map(c => c.x) ?? [0])) + 1
+                        : gate.width;
                     return (
                         <div
                             className="grid-item relative group"
@@ -184,6 +233,8 @@ export default ({ droppingItem }) => {
                                 fill={gate.fill}
                                 isCustom={gate.isCustom}
                                 components={gate.components ?? []}
+                                isXRayMode={xray}
+                                onToggleXRay={() => toggleXRayMode(item.i)}
                             />
                         </div>
                     );
@@ -191,7 +242,7 @@ export default ({ droppingItem }) => {
             </ReactGridLayout>
             <div className="absolute top-0 left-0 z-10"
                 style={{
-                    width: `${2 * containerPadding.x + (gridDimenX) * (size + margin.x) + size / 2}px`,
+                    width: `${2 * containerPadding.x + (maxColUsed) * (size + margin.x) + size / 2}px`,
                 }}>
                 {[...new Array(gridDimenY)].map((_, index) => (
                     <div
